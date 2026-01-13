@@ -7,7 +7,7 @@ class MessageInput(BaseModel):
     conversation_id: str = Field(..., min_length=1, description="Conversation ID cannot be empty")
     type: str = Field(..., pattern="^(human|ai)$", description="Must be 'human' or 'ai'")
     text: str = Field(..., min_length=1, description="Message text cannot be empty.")
-    timestamp: str | None = Field(None, description="UTC timestamp (optional)")
+    timestamp: Optional[str] = Field(None, description="UTC timestamp (optional)")
 
 class SearchRequest(BaseModel):
     user_id: str = Field(..., description="User ID")

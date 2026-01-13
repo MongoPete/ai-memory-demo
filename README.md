@@ -1,386 +1,493 @@
-# AI-Memory-Service
+# AI Memory Service
 
-## Table of Contents
-1. [Overview](#1-overview)
-2. [System Architecture](#2-system-architecture)
-3. [Core Components](#3-core-components)
-4. [Memory Cognitive Architecture](#4-memory-cognitive-architecture)
-5. [Installation & Deployment](#5-installation--deployment)
-6. [Configuration](#6-configuration)
-7. [API Reference](#7-api-reference)
-8. [Memory Operations](#8-memory-operations)
-9. [Search Capabilities](#9-search-capabilities)
-10. [Security & Monitoring](#10-security--monitoring)
-11. [Development Guide](#11-development-guide)
-12. [Advanced Features](#12-advanced-features)
+MongoDB Atlas Vector Search + AWS Bedrock Demo
 
-## 1. Overview
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green)](https://www.mongodb.com/atlas)
+[![AWS Bedrock](https://img.shields.io/badge/AWS-Bedrock-orange)](https://aws.amazon.com/bedrock/)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-teal)](https://fastapi.tiangolo.com/)
 
-AI Memory Service is an advanced cognitive memory system designed to transform AI memory from simple storage into a sophisticated architecture that evaluates, reinforces, and connects knowledge like a human brain. By combining MongoDB Atlas's vector search capabilities with AWS Bedrock's AI services, the system builds memory networks that prioritize important information, strengthen connections through repetition, and recall relevant context precisely when needed.
+A production-ready demonstration of semantic search and AI memory management using MongoDB's vector search capabilities with AWS Bedrock AI services.
 
-Key features include:
+---
 
-- Importance-weighted memory storage and retrieval
-- Dynamic reinforcement and decay of memories
-- Semantic merging of related memories
-- Hybrid search combining vector and full-text capabilities
-- Contextual conversation retrieval with AI-powered summarization
-- Automatic importance assessment of new information
-- Memory pruning based on cognitive principles
+## 🚀 Quick Start (5 Minutes)
 
-## 2. System Architecture
+```bash
+# 1. Clone and install
+git clone <your-repo-url>
+cd ai-memory
+pip3 install -r requirements.txt
+cd figmaUI && npm install && cd ..
 
-```mermaid
-graph TD
-    Client(Client Application) --> FastAPI[FastAPI Service]
-    FastAPI --> MemSvc[Memory Service]
-    FastAPI --> ConvSvc[Conversation Service]
-    FastAPI --> BedSvc[Bedrock Service]
-    
-    MemSvc --> Atlas[(MongoDB Atlas)]
-    ConvSvc --> Atlas
-    MemSvc & ConvSvc --> BedSvc
-    
-    BedSvc --> EmbedModel[Embedding Model]
-    BedSvc --> LLMModel[LLM Model]
-    
-    Atlas --> ConvColl[Conversations Collection]
-    Atlas --> MemColl[Memory Nodes Collection]
-    
-    ConvColl --> ConvVecIdx[Vector Search Index]
-    ConvColl --> ConvTxtIdx[Fulltext Search Index]
-    MemColl --> MemVecIdx[Vector Search Index]
+# 2. Configure
+cp .env.example .env
+# Edit .env with your MongoDB URI and AWS credentials
+
+# 3. Start
+./scripts/start_demo.sh
+
+# 4. Open
+# http://localhost:5173
 ```
 
-The architecture follows a service-oriented design where each component has a specific responsibility in the cognitive memory pipeline, leveraging MongoDB Atlas for advanced vector storage and AWS Bedrock for AI reasoning capabilities.
+**[→ Detailed Setup Guide](docs/02-SETUP-GUIDE.md)**
 
-## 3. Core Components
+---
 
-1. **FastAPI Service Layer**
-   - Purpose: Handles HTTP requests and orchestrates memory operations
-   - Technologies: Python 3.10+, FastAPI 0.115+
-   - Key endpoints: Add conversation messages, retrieve memories, search memories
+## 🎯 What This Demonstrates
 
-2. **MongoDB Atlas Integration**
-   - Purpose: Provides persistent storage with vector search capabilities
-   - Collections:
-     - Conversations: Stores raw conversation history with embeddings
-     - Memory Nodes: Stores processed memory nodes with importance ratings
-   - Indexes:
-     - Vector search indexes for semantic retrieval
-     - Full-text search indexes for keyword retrieval
-     - Importance indexes for memory prioritization
+### MongoDB Atlas Features
+- ✅ **Vector Search** - 1536-dimension semantic search with Titan embeddings
+- ✅ **Hybrid Search** - Combined full-text and vector search
+- ✅ **Real-time Indexing** - Instant search across conversations
+- ✅ **Cross-collection Queries** - Search across users and conversations
 
-3. **AWS Bedrock Service**
-   - Purpose: Delivers AI capabilities for embedding and reasoning
-   - Models:
-     - Embedding Model: Generates vector representations (Titan)
-     - LLM Model: Performs reasoning tasks (Claude)
-   - Operations:
-     - Embedding generation for semantic search
-     - Importance assessment of new information
-     - Memory summarization and merging
-     - Conversation context summarization
+### AWS Bedrock Features
+- ✅ **Titan Embeddings** - High-quality vector generation
+- ✅ **Claude AI** - Intelligent importance assessment
+- ✅ **AI Summarization** - Context-aware summaries
+- ✅ **Dynamic Memory** - Reinforcement and decay algorithms
 
-4. **Memory Service**
-   - Purpose: Manages the cognitive memory operations
-   - Features:
-     - Memory creation with importance assessment
-     - Memory reinforcement and decay
-     - Related memory merging
-     - Memory pruning based on importance
+### Application Features
+- ✅ **Single-user Chat** - Real-time conversation with semantic search
+- ✅ **Multi-user Demo** - Split-screen with global search
+- ✅ **Memory Dashboard** - AI-generated memory visualization
+- ✅ **Real-time Vectorization** - Watch embeddings being created
 
-5. **Conversation Service**
-   - Purpose: Handles conversation storage and retrieval
-   - Features:
-     - Conversation history storage
-     - Context retrieval around specific points
-     - Hybrid search across conversations
-     - AI-powered conversation summarization
+---
 
-## 4. Memory Cognitive Architecture
-
-The system implements a cognitive architecture for memory that mimics human memory processes:
-
-```mermaid
-flowchart TD
-    Start([New Content]) --> Embed[Generate Embeddings]
-    Embed --> CheckSim{Similar Memory Exists?}
-    
-    CheckSim -->|Is >0.85 Similar| Reinforce[Reinforce Existing Memory]
-    CheckSim -->|Not Similar| Assess[Assess Importance with LLM]
-    
-    Assess --> CreateSumm[Generate Summary]
-    CreateSumm --> CreateNode[Create Memory Node]
-    CreateNode --> CheckMerge{Mergeable Memories?}
-    
-    CheckMerge -->|Similar 0.7-0.85| Merge[Merge Related Memories]
-    CheckMerge -->|Not Similar| UpdateImportance[Update Other Memories]
-    
-    Merge --> UpdateImportance
-    Reinforce --> UpdateImportance
-    
-    UpdateImportance --> CheckPrune{Memory Count > Max?}
-    CheckPrune -->|Yes| Prune[Prune Least Important]
-    CheckPrune -->|No| Complete([Complete])
-```
-
-Key cognitive processes:
-- **Importance Assessment**: Using AI to evaluate memory significance
-- **Memory Reinforcement**: Strengthening memories through repetition
-- **Memory Decay**: Gradually reducing importance of unused memories
-- **Memory Merging**: Combining related information for coherent knowledge
-- **Memory Pruning**: Removing less important memories when capacity is reached
-
-## 5. Installation & Deployment
-
-### Prerequisites
-- Python 3.10+
-- MongoDB Atlas account with vector search capability
-- AWS account with Bedrock access
-- Docker (optional)
-
-### Local Installation
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/mongodb-partners/ai-memory.git
-   cd ai-memory
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Set up environment variables (see Configuration section)
-
-4. Run the application:
-   ```bash
-   python main.py
-   ```
-
-### Docker Deployment
-1. Build the Docker image:
-   ```bash
-   docker build -t ai-memory .
-   ```
-
-2. Run the container:
-   ```bash
-   docker run -p 8182:8182 --env-file .env ai-memory
-   ```
-
-## 6. Configuration
-
-### Environment Variables
-Configure the application using environment variables or a `.env` file:
+## 🏗 Architecture
 
 ```
-# MongoDB Atlas Configuration
+┌─────────────┐
+│   User      │
+│  (Browser)  │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────────────────────┐
+│   React Frontend (Vite + Tailwind)  │
+│   • Unified Chat Interface          │
+│   • Split-screen Demo Mode          │
+│   • Memory Dashboard                │
+└──────┬──────────────────────────────┘
+       │ HTTP/REST
+       ▼
+┌─────────────────────────────────────┐
+│   FastAPI Backend (Python)          │
+│   • /conversation/ (add messages)   │
+│   • /retrieve_memory/ (search)      │
+│   • /memories/{user_id} (list)      │
+└──────┬─────────────┬────────────────┘
+       │             │
+       ▼             ▼
+┌──────────────┐  ┌──────────────────┐
+│  MongoDB     │  │  AWS Bedrock     │
+│  Atlas       │  │  • Titan Embed   │
+│  • Vector DB │  │  • Claude AI     │
+│  • Search    │  │                  │
+└──────────────┘  └──────────────────┘
+```
+
+**Tech Stack:**
+- **Backend:** Python 3.10+, FastAPI, pymongo
+- **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui
+- **Database:** MongoDB Atlas (Vector Search + Full-text Search)
+- **AI:** AWS Bedrock (Titan Embeddings + Claude)
+- **Deployment:** Docker, AWS (backend) | Vercel (frontend)
+
+---
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| **[Quick Start](docs/01-QUICKSTART.md)** | Get running in 5-10 minutes |
+| **[Setup Guide](docs/02-SETUP-GUIDE.md)** | Complete installation instructions |
+| **[MongoDB Atlas](docs/03-MONGODB-ATLAS.md)** | Vector search index setup |
+| **[AWS Bedrock](docs/04-AWS-BEDROCK.md)** | Model access and credentials |
+| **[Troubleshooting](docs/05-TROUBLESHOOTING.md)** | Common issues and solutions |
+| **[Deployment](docs/06-DEPLOYMENT.md)** | Production deployment guide |
+| **[Advanced Optimizations](docs/07-ADVANCED-OPTIMIZATIONS.md)** | Performance tuning |
+| **[Tuning Semantic Search](docs/08-TUNING-SEMANTIC-SEARCH.md)** | Adjust search relevance |
+
+---
+
+## 🎮 Demo Features
+
+### 1. Unified Chat View
+**Purpose:** Single-user conversation with real-time semantic search
+
+**Try it:**
+```
+User ID: alice
+Conversation: demo_test
+Message: "I'm building a recommendation system using collaborative filtering and neural networks"
+```
+
+Then search for: `machine learning` (note: different words, semantic match!)
+
+**Watch:**
+- Real-time vectorization indicator
+- Embedding generation
+- Semantic search results (finds related concepts, not just keywords)
+
+### 2. Multi-User Demo Mode
+**Purpose:** Showcase cross-user search and multi-conversation handling
+
+**Try it:**
+- Send messages as Alice, Bob, and Carol
+- Each user has their own conversation
+- Use global search to find across all users
+
+**Demonstrates:**
+- User isolation
+- Cross-user search
+- Conversation threading
+- Scalability
+
+### 3. Memory Dashboard
+**Purpose:** Visualize AI-generated memories with importance scoring
+
+**Features:**
+- AI-generated summaries (Claude)
+- Importance scores (0-1 scale)
+- Access count tracking
+- Memory reinforcement visualization
+
+---
+
+## 🔧 Configuration
+
+### Required Environment Variables
+
+   ```bash
+# MongoDB Atlas (Required)
 MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
-MONGODB_DB_NAME=ai_memory
 
-# AWS Configuration
+# AWS Bedrock (Required)
+AWS_ACCESS_KEY_ID=AKIA...
+AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=us-east-1
+
+# Models (Optional - has defaults)
+LLM_MODEL_ID=arn:aws:bedrock:us-east-1:...:inference-profile/...
 EMBEDDING_MODEL_ID=amazon.titan-embed-text-v1
-LLM_MODEL_ID=us.anthropic.claude-3-7-sonnet-20250219-v1:0
-
-# Memory System Parameters
-MAX_DEPTH=5
-SIMILARITY_THRESHOLD=0.7
-DECAY_FACTOR=0.99
-REINFORCEMENT_FACTOR=1.1
-
-# Service Configuration
-SERVICE_HOST=0.0.0.0
-SERVICE_PORT=8182
-DEBUG=False
 ```
 
-### Memory Parameters
+**[→ Full Configuration Guide](docs/02-SETUP-GUIDE.md#application-configuration)**
 
-The cognitive behavior of the memory system can be tuned through these parameters:
+### MongoDB Atlas Setup
 
-- **MAX_DEPTH**: Maximum number of memories per user (default: 5)
-- **SIMILARITY_THRESHOLD**: Threshold for memory reinforcement (default: 0.7)
-- **DECAY_FACTOR**: Rate at which memories fade (default: 0.99)
-- **REINFORCEMENT_FACTOR**: Strength of memory reinforcement (default: 1.1)
+**Required:** 3 search indexes
 
-## 7. API Reference
+1. **`conversations_vector_search_index`** - Vector search (1536 dim, cosine)
+2. **`conversations_fulltext_search_index`** - Full-text search
+3. **`memory_nodes_vector_search_index`** - Memory vector search
 
-### Endpoints
+**[→ Index Creation Guide](docs/03-MONGODB-ATLAS.md#creating-search-indexes)**
 
-- **POST /conversation/**
-  - Purpose: Add a message to the conversation history
-  - Request Body: MessageInput model
-  - Response: Confirmation message
-  - Example:
-    ```json
-    {
-      "user_id": "user123",
-      "conversation_id": "conv456",
+---
+
+## 🧪 Testing
+
+### Verify Setup
+```bash
+# Check environment
+python3 -c "import config; print('✅ Config OK')"
+
+# Test AWS credentials
+python3 scripts/check_aws_credentials.py
+
+# Comprehensive validation
+python3 scripts/validate_setup.py
+```
+
+### Test Backend
+```bash
+# Start backend
+python3 main.py
+
+# Health check
+curl http://localhost:8182/health | python3 -m json.tool
+
+# Send test message
+curl -X POST http://localhost:8182/conversation/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "test",
+    "conversation_id": "test",
       "type": "human",
-      "text": "I prefer to be contacted via email at john@example.com",
-      "timestamp": "2023-06-10T14:30:00Z"
-    }
-    ```
-
-- **GET /retrieve_memory/**
-  - Purpose: Retrieve memory items, context, and similar memory nodes
-  - Query Parameters: user_id, text
-  - Response: Related conversation, conversation summary, and similar memories
-  - Example URL: `/retrieve_memory/?user_id=user123&text=contact preference`
-
-- **GET /health**
-  - Purpose: Health check endpoint
-  - Response: Status information
-
-### Models
-
-Key data models:
-
-- **MessageInput**: Represents a conversation message
-- **MemoryNode**: Represents a memory node with importance scoring
-- **SearchRequest**: Request for memory search
-- **ErrorResponse**: Standardized error response
-
-## 8. Memory Operations
-
-### Memory Creation
-
-New memories are created from significant human messages:
-1. Message is converted to embeddings
-2. Similar memories are checked
-3. If no similar memory exists, importance is assessed
-4. A summary is generated
-5. The memory node is created with metadata
-
-### Memory Retrieval
-
-```mermaid
-flowchart TD
-    Query[User Query] --> Embed[Generate Query Embedding]
-    Embed --> ParallelOps[Parallel Operations]
-    ParallelOps --> HybridSearch[Hybrid Search]
-    ParallelOps --> MemorySearch[Memory Nodes Search]
-    HybridSearch --> Combine[Combine Results]
-    MemorySearch --> CalcImp[Calculate Effective Importance]
-    Combine & CalcImp --> Response[Build Response]
+    "text": "Testing the AI memory system with machine learning"
+  }'
 ```
 
-Memories are retrieved through a sophisticated process:
-1. Query embeddings are generated
-2. Hybrid search combines vector and text search
-3. Memory nodes are searched directly
-4. Context is retrieved around matching points
-5. Summaries are generated for conversations
-6. Results are combined with importance weighing
-
-### Memory Updating
-
-Memories evolve through:
-1. Reinforcement when similar content appears
-2. Decay when not accessed
-3. Merging when related information is found
-4. Pruning when capacity is exceeded
-
-## 9. Search Capabilities
-
-### Hybrid Search Mechanism
-
-```mermaid
-flowchart TD
-    Start([Search Query]) --> Split[Split Processing]
-    Split --> Text[Text Query]
-    Split --> Vector[Vector Query]
-    Text --> TextSearch["$search Aggregation"]
-    Vector --> VectorSearch["$vectorSearch Aggregation"]
-    TextSearch & VectorSearch --> Union["$unionWith Operation"]
-    Union --> Group["$group by document ID"]
-    Group --> Weighted["Weighted Score Combination"]
-    Weighted --> Sort["Sort by hybrid_score"]
+### Test Frontend
+```bash
+cd figmaUI
+npm run dev
+# Open http://localhost:5173
 ```
 
-The system combines multiple search methodologies:
-1. Vector search for semantic understanding
-2. Full-text search for keyword precision
-3. Score normalization across methodologies
-4. Weighted combination of results
-5. Context retrieval and summarization
+**[→ Complete Testing Guide](docs/01-QUICKSTART.md#5-open-and-test)**
 
-### Vector Search Configuration
+---
 
-MongoDB Atlas vector search is configured for optimal performance:
-- Vector dimension: 1536 (Titan embeddings)
-- Similarity metric: Cosine similarity
-- Query filter: User ID filtering
-- numCandidates: 200 (tunable parameter)
+## 🚀 Deployment
 
-## 10. Security & Monitoring
+### Frontend (Vercel)
+```bash
+cd figmaUI
+vercel deploy
+```
 
-### Security Considerations
-- Use HTTPS for all API communications
-- Implement authentication for API access
-- Regularly rotate AWS and MongoDB credentials
-- Apply least privilege principle for service users
-- Consider encryption for sensitive memory content
+### Backend (AWS/Docker)
+```bash
+docker build -t ai-memory-service .
+docker run -p 8182:8182 --env-file .env ai-memory-service
+```
 
-### Monitoring & Logging
-- The system uses the `logger.py` for structured logging
-- Key metrics to monitor:
-  - Memory creation rate and distribution
-  - Average memory importance scores
-  - Prune frequency and volume
-  - Query latency for memory retrieval
-  - AWS Bedrock API usage and costs
-- Log levels can be configured based on operational needs
+**[→ Production Deployment Guide](docs/06-DEPLOYMENT.md)**
 
-## 11. Development Guide
+---
 
-### Adding New Features
-1. Extend the appropriate service module
-2. Update models if necessary
-3. Add new API endpoints in main.py
-4. Update MongoDB indexes if needed
-5. Document changes and update tests
+## 💡 How It Works
 
-### Testing
-- Test memory creation with various importance levels
-- Verify memory reinforcement and decay behavior
-- Benchmark hybrid search performance
-- Test with different memory parameters
+### Memory Creation Flow
 
-### Best Practices
-- Use type hints and descriptive variable names
-- Document all functions with docstrings
-- Use the logger for all significant operations
-- Handle exceptions appropriately
-- Consider backward compatibility for API changes
+```
+1. User sends message → Backend
+2. Message saved to MongoDB
+3. AWS Bedrock generates embedding (1536-dim vector)
+4. For significant messages (>30 chars):
+   a. Claude assesses importance (0-1 scale)
+   b. Claude generates summary
+   c. Memory node created
+5. MongoDB indexes for search
+```
 
-## 12. Advanced Features
+### Search Flow
 
-### Memory Hierarchy
-The system can be extended to support hierarchical memory structures with parent-child relationships between memories.
+```
+1. User types search query
+2. Frontend debounces (500ms)
+3. Backend generates query embedding (Titan)
+4. MongoDB hybrid search:
+   a. Vector search (semantic)
+   b. Full-text search (keywords)
+   c. Combine results (weighted)
+5. Filter by similarity threshold (>0.70)
+6. Return top results
+```
 
-### Enhanced Importance Assessment
-The importance evaluation can be made more sophisticated by considering:
-- User feedback on memory relevance
-- Time-based relevance decay
-- Domain-specific importance metrics
-- User behavior patterns
+### Memory Management
 
-### Multi-modal Memory
-Future versions can incorporate:
-- Image embeddings and memory
-- Voice pattern memory
-- Document and structured data memory
-- Cross-modal associative memory
+**Reinforcement:** Similar memories (0.85+ similarity) get importance boost
+**Merging:** Related memories (0.70-0.85) combined into single node
+**Decay:** Unused memories lose importance over time
+**Pruning:** Maximum 5 memories per user (lowest importance removed)
 
-### Federation and Privacy
-Advanced implementations can support:
-- Federated memory across services
-- Privacy-preserving memory operations
-- Selective forgetting capabilities
-- Memory encryption for sensitive data
+---
 
-This documentation provides a comprehensive overview of the AI-Memory-Service's cognitive architecture. For specific implementation details, refer to the comments and docstrings within the codebase.
+## 📊 Performance
+
+### Default Performance
+- **Message save:** 100-200ms
+- **Search (first time):** 1500-2000ms (Bedrock call)
+- **Search (cached):** 50-100ms
+- **Memory creation:** 2-3s (async, doesn't block)
+
+### Optimizations Available
+- **Embedding cache:** Already implemented (50ms repeated searches)
+- **Cohere embeddings:** 2-3x faster than Titan
+- **Local embeddings:** Zero cost, 50ms all searches
+- **Redis cache:** Persistent across restarts
+
+**[→ Performance Optimization Guide](docs/07-ADVANCED-OPTIMIZATIONS.md)**
+
+---
+
+## 🛠 Development
+
+### Project Structure
+```
+ai-memory/
+├── main.py                 # FastAPI application
+├── config.py              # Configuration
+├── requirements.txt       # Python dependencies
+├── .env.example          # Environment template
+│
+├── services/             # Business logic
+│   ├── bedrock_service.py    # AWS Bedrock integration
+│   ├── conversation_service.py # Chat & search
+│   └── memory_service.py     # Memory management
+│
+├── database/             # Data layer
+│   ├── mongodb.py           # MongoDB client
+│   └── models.py            # Data models
+│
+├── models/               # API models
+│   └── pydantic_models.py   # Request/response schemas
+│
+├── utils/                # Utilities
+│   ├── logger.py
+│   ├── env_validator.py
+│   └── helpers.py
+│
+├── scripts/              # Helper scripts
+│   ├── check_aws_credentials.py
+│   ├── refresh_aws_credentials.py
+│   ├── validate_setup.py
+│   └── start_demo.sh
+│
+├── figmaUI/              # React frontend
+│   ├── app/
+│   │   ├── App.tsx
+│   │   ├── components/
+│   │   │   ├── unified-chat.tsx
+│   │   │   ├── split-screen-demo.tsx
+│   │   │   ├── memory-dashboard.tsx
+│   │   │   └── ui/         # shadcn/ui components
+│   │   └── config.ts
+│   ├── package.json
+│   └── vite.config.ts
+│
+└── docs/                 # Documentation
+    ├── 01-QUICKSTART.md
+    ├── 02-SETUP-GUIDE.md
+    ├── 03-MONGODB-ATLAS.md
+    ├── 04-AWS-BEDROCK.md
+    ├── 05-TROUBLESHOOTING.md
+    ├── 06-DEPLOYMENT.md
+    └── 07-ADVANCED-OPTIMIZATIONS.md
+```
+
+### Local Development
+```bash
+# Backend with auto-reload
+DEBUG=true python3 main.py
+
+# Frontend with HMR
+cd figmaUI && npm run dev
+
+# Run tests
+python3 -m pytest tests/
+
+# Format code
+black . && isort .
+```
+
+---
+
+## 🔐 Security
+
+- ✅ Environment variables (never commit `.env`)
+- ✅ CORS configuration
+- ✅ IAM role-based access (AWS)
+- ✅ IP whitelisting (MongoDB Atlas)
+- ✅ Input validation (Pydantic)
+- ✅ Error handling without exposing internals
+
+**[→ Security Best Practices](docs/04-AWS-BEDROCK.md#security-best-practices)**
+
+---
+
+## 💰 Cost Estimate
+
+### Development/Demo (Low Volume)
+- MongoDB Atlas: **Free** (M0 tier)
+- AWS Bedrock: **< $1/month** (100 messages/day)
+- **Total: ~$0-1/month**
+
+### Production (Medium Volume)
+- MongoDB Atlas: **$9/month** (M2 tier)
+- AWS Bedrock: **$10-20/month** (10,000 messages/day)
+- **Total: ~$20-30/month**
+
+**Notes:**
+- Free tier sufficient for demos
+- Costs scale linearly with usage
+- Optimizations can reduce by 50-90%
+
+**[→ Detailed Cost Analysis](docs/07-ADVANCED-OPTIMIZATIONS.md#cost-analysis)**
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! This is a demonstration project showing MongoDB Atlas and AWS Bedrock integration.
+
+**Ideas for enhancement:**
+- Add user authentication
+- Implement conversation threads
+- Add memory expiration
+- Create admin dashboard
+- Add more AI models
+- Implement memory export
+- Add usage analytics
+
+---
+
+## 📄 License
+
+MIT License - See [LICENSE](LICENSE) file
+
+---
+
+## 🙏 Acknowledgments
+
+- **MongoDB Atlas** - Vector search capabilities
+- **AWS Bedrock** - Titan and Claude models
+- **Anthropic** - Claude AI
+- **FastAPI** - Modern Python web framework
+- **React** + **Vite** - Frontend framework
+- **shadcn/ui** - Beautiful UI components
+
+---
+
+## 📞 Support
+
+**Issues?**
+1. Check [Troubleshooting Guide](docs/05-TROUBLESHOOTING.md)
+2. Review [Setup Guide](docs/02-SETUP-GUIDE.md)
+3. Check backend logs for errors
+4. Verify MongoDB Atlas and AWS Bedrock status
+
+**Questions?**
+- Review documentation in `docs/` folder
+- Check inline code comments
+- Examine configuration files
+
+---
+
+## ⚡ Quick Commands
+
+```bash
+# Full setup from scratch
+./scripts/quick_setup.sh
+
+# Start demo (both backend + frontend)
+./scripts/start_demo.sh
+
+# Validate configuration
+python3 scripts/validate_setup.py
+
+# Check AWS credentials
+python3 scripts/check_aws_credentials.py
+
+# Health check
+curl http://localhost:8182/health
+
+# Kill processes
+pkill -9 -f "python3 main.py"
+lsof -ti:8182 | xargs kill -9
+```
+
+---
+
+**Ready to start?** → [Quick Start Guide](docs/01-QUICKSTART.md)
+
+**Need help?** → [Troubleshooting](docs/05-TROUBLESHOOTING.md)
+
+**Want to optimize?** → [Advanced Guide](docs/07-ADVANCED-OPTIMIZATIONS.md)

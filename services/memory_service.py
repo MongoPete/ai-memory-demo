@@ -1,4 +1,5 @@
 import datetime
+import math
 from bson.objectid import ObjectId
 import pymongo
 from config import MAX_DEPTH, SIMILARITY_THRESHOLD, REINFORCEMENT_FACTOR, DECAY_FACTOR
@@ -8,6 +9,70 @@ from utils.helpers import cosine_similarity
 from typing import List, Dict
 from config import MEMORY_NODES_VECTOR_SEARCH_INDEX_NAME
 from utils.logger import logger
+
+async def list_all_memories(user_id: str) -> List[Dict]:
+    """
+    List all memory nodes for a user, sorted by effective importance (descending).
+    Returns memories with calculated effective_importance.
+    
+    Args:
+        user_id: User ID to filter by
+    Returns:
+        List of memory nodes with all fields including effective_importance
+    """
+    try:
+        cursor = memory_nodes.find({"user_id": user_id}).sort(
+            [("importance", pymongo.DESCENDING), ("timestamp", pymongo.DESCENDING)]
+        )
+        
+        results = []
+        for doc in cursor:
+            doc_id = str(doc.pop("_id"))
+            # Calculate effective importance
+            access_count = doc.get("access_count", 0)
+            importance = doc.get("importance", 0.5)
+            effective_importance = importance * (1 + math.log(access_count + 1))
+            
+            # Format timestamp to ISO 8601 string
+            timestamp = doc.get("timestamp")
+            if timestamp:
+                if isinstance(timestamp, datetime.datetime):
+                    timestamp_str = timestamp.isoformat()
+                else:
+                    timestamp_str = str(timestamp)
+            else:
+                timestamp_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            
+            # Format last_accessed if it exists
+            last_accessed = doc.get("last_accessed")
+            last_accessed_str = None
+            if last_accessed:
+                if isinstance(last_accessed, datetime.datetime):
+                    last_accessed_str = last_accessed.isoformat()
+                else:
+                    last_accessed_str = str(last_accessed)
+            
+            result = {
+                "id": doc_id,
+                "user_id": doc.get("user_id"),
+                "content": doc.get("content", ""),
+                "summary": doc.get("summary", ""),
+                "importance": importance,
+                "access_count": access_count,
+                "effective_importance": effective_importance,
+                "timestamp": timestamp_str,
+            }
+            
+            if last_accessed_str:
+                result["last_accessed"] = last_accessed_str
+            
+            results.append(result)
+        
+        return results
+    except Exception as e:
+        logger.error(f"Error listing memories for user {user_id}: {str(e)}")
+        raise
+
 
 async def find_similar_memories(
     user_id: str, embedding: List[float], top_n: int = 3
@@ -142,6 +207,7 @@ async def remember_content(request):
                     "memory_id": memory["id"],
                 }
         # For new memories, assess importance
+        # If Bedrock unavailable, use default values
         importance_assessment_prompt = (
             "On a scale of 1-10, rate the importance of remembering this information long-term. "
             "Consider factors like: uniqueness of information, actionability, personal significance, "
@@ -149,22 +215,33 @@ async def remember_content(request):
             f"Text to evaluate: {request.content}"
         )
         importance_rating_text = await send_to_bedrock(importance_assessment_prompt)
-        # Extract numeric rating (handle potential non-numeric responses)
-        try:
-            importance_rating = float(
-                "".join(c for c in importance_rating_text if c.isdigit() or c == ".")
-            )
-            # Normalize to 0-1 range
-            importance_score = min(max(importance_rating / 10, 0.1), 1.0)
-        except ValueError:
-            # Default if we can't parse the rating
+        # Extract numeric rating (handle potential non-numeric responses or None)
+        if importance_rating_text:
+            try:
+                importance_rating = float(
+                    "".join(c for c in importance_rating_text if c.isdigit() or c == ".")
+                )
+                # Normalize to 0-1 range
+                importance_score = min(max(importance_rating / 10, 0.1), 1.0)
+            except (ValueError, TypeError):
+                # Default if we can't parse the rating
+                importance_score = 0.5
+        else:
+            # Bedrock unavailable - use default importance
+            logger.info("Bedrock unavailable, using default importance score")
             importance_score = 0.5
+        
         # Generate a concise summary
         summary_prompt = (
             "Create a one-sentence summary of the key information in this text. Be specific and concise:\n\n"
             + request.content
         )
         summary = await send_to_bedrock(summary_prompt)
+        # Fallback summary if Bedrock unavailable
+        if not summary:
+            # Create a simple fallback summary (first 100 chars)
+            summary = request.content[:100] + ("..." if len(request.content) > 100 else "")
+            logger.info("Bedrock unavailable, using fallback summary")
         # Create new memory node
         new_memory = {
             "user_id": request.user_id,
@@ -194,6 +271,11 @@ async def remember_content(request):
                 combined_content = await send_to_bedrock(
                     f"{combined_content_prompt}\n\nCombine these texts effectively."
                 )
+                # Fallback if Bedrock unavailable - just concatenate
+                if not combined_content:
+                    combined_content = f"{new_memory['content']}\n\n{memory['content']}"
+                    logger.info("Bedrock unavailable, using concatenated content for merge")
+                
                 # Update metrics
                 updated_importance = (
                     max(new_memory["importance"], memory["importance"]) * 1.1
@@ -213,6 +295,10 @@ async def remember_content(request):
                 summary = await send_to_bedrock(
                     f"{summary_prompt}\n\nCreate a concise summary."
                 )
+                # Fallback summary if Bedrock unavailable
+                if not summary:
+                    summary = combined_content[:100] + ("..." if len(combined_content) > 100 else "")
+                    logger.info("Bedrock unavailable, using fallback summary for merged memory")
                 # Update the memory
                 memory_nodes.update_one(
                     {"_id": ObjectId(memory_id)},

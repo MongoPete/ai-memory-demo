@@ -1,4 +1,5 @@
 import json
+import datetime
 import pymongo
 from bson.objectid import ObjectId
 from bson import json_util
@@ -127,6 +128,7 @@ async def add_conversation_message(message_input):
         new_message = Message(message_input)
         conversations.insert_one(new_message.to_dict())
         # For significant human messages, create a memory node
+        # Note: Memory creation is non-blocking - if it fails, message is still stored
         if message_input.type == "human" and len(message_input.text) > 30:
             try:
                 memory_content = (
@@ -137,8 +139,10 @@ async def add_conversation_message(message_input):
                     RememberRequest(user_id=message_input.user_id, content=memory_content)
                 )
             except Exception as memory_error:
-                logger.error(f"Error creating memory: {str(memory_error)}")
-                raise
+                # Log error but don't fail message creation
+                # Memory creation requires Bedrock - if unavailable, message still succeeds
+                logger.warning(f"Memory creation failed (Bedrock may be unavailable): {str(memory_error)}")
+                logger.info("Message stored successfully, but memory creation skipped")
         return {"message": "Message added successfully"}
     except Exception as error:
         logger.error(str(error))
@@ -147,10 +151,49 @@ async def add_conversation_message(message_input):
 async def search_memory(user_id, query):
     """
     Searches memory items by user_id and a textual query using hybrid search.
+    Falls back to text-only search if embeddings are unavailable.
     """
     try:
         # Generate embedding for the query text
         vector_query = generate_embedding(query)
+        
+        # If embeddings unavailable (empty list), use text-only search
+        if not vector_query:
+            logger.warning(f"FALLBACK SEARCH: Embeddings unavailable for user={user_id}, query='{query[:50]}...'")
+            logger.info("Using text-only regex search (Bedrock unavailable)")
+            
+            # Audit log: Track fallback search usage
+            try:
+                from database.mongodb import db
+                audit_collection = db.get_collection("search_audit")
+                audit_collection.insert_one({
+                    "timestamp": datetime.datetime.now(datetime.timezone.utc),
+                    "user_id": user_id,
+                    "query": query,
+                    "search_type": "fallback_regex",
+                    "reason": "embeddings_unavailable",
+                    "bedrock_status": "unavailable"
+                })
+            except Exception as audit_error:
+                logger.debug(f"Audit logging failed (non-critical): {audit_error}")
+            
+            # Simple text search fallback - KEEP _id for serialization
+            results = list(conversations.find(
+                {
+                    "user_id": user_id,
+                    "text": {"$regex": query, "$options": "i"}
+                },
+                projection={"embeddings": 0}  # Exclude only embeddings, keep _id
+            ).limit(5))
+            
+            if not results:
+                return {"documents": "No documents found"}
+            else:
+                # Format results - serialize_document needs _id
+                formatted_results = [serialize_document(doc) for doc in results]
+                logger.info(f"Fallback search returned {len(formatted_results)} results")
+                return {"documents": formatted_results}
+        
         # Perform hybrid search over the stored messages
         documents = hybrid_search(query, vector_query, user_id, weight=0.8, top_n=5)
         # Filter results by minimum hybrid score threshold
@@ -263,6 +306,37 @@ async def generate_conversation_summary(documents):
         return {"summary": summary}
     except Exception as error:
         logger.error(str(error))
+        raise
+
+async def get_conversation_history(user_id: str, conversation_id: str):
+    """
+    Fetch all messages in a conversation, sorted by timestamp.
+    Returns a list of messages in chronological order.
+    """
+    try:
+        cursor = conversations.find(
+            {
+                "user_id": user_id,
+                "conversation_id": conversation_id
+            },
+            projection={
+                "_id": 1,
+                "user_id": 1,
+                "conversation_id": 1,
+                "type": 1,
+                "text": 1,
+                "timestamp": 1
+            }
+        ).sort("timestamp", pymongo.ASCENDING)
+        
+        messages = []
+        for doc in cursor:
+            doc["_id"] = str(doc["_id"])
+            messages.append(doc)
+        
+        return messages
+    except Exception as error:
+        logger.error(f"Error fetching conversation history: {str(error)}")
         raise
 
 def serialize_document(doc):

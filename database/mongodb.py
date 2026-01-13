@@ -89,6 +89,15 @@ def initialize_mongodb():
         except pymongo.errors.PyMongoError as e:
             logger.error(f"Error creating memory_nodes indexes: {e}")
 
+async def check_mongodb_connection() -> bool:
+    """Check if MongoDB connection is healthy"""
+    try:
+        client.admin.command('ping')
+        return True
+    except Exception as e:
+        logger.error(f"MongoDB connection check failed: {e}")
+        return False
+
 def serialize_document(doc):
     """Helper function to serialize MongoDB documents."""
     doc["_id"] = str(doc["_id"])  # Convert ObjectId to string

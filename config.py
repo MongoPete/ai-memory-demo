@@ -1,8 +1,30 @@
 import os
+import sys
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Import validation after loading env vars to avoid circular imports
+from utils.env_validator import validate_required_env_vars, validate_mongodb_uri, get_cors_origins
+
+# Validate required environment variables on import
+_is_valid, missing_vars = validate_required_env_vars()
+if not _is_valid:
+    print("\n" + "="*60)
+    print("ERROR: Missing required environment variables!")
+    print("="*60)
+    for var in missing_vars:
+        print(f"  ❌ {var}")
+    print("\nPlease create a .env file with these variables.")
+    print("See .env.example for a template.")
+    print("="*60 + "\n")
+    sys.exit(1)
+
+# Validate MongoDB URI format
+mongodb_uri = os.getenv("MONGODB_URI")
+if mongodb_uri and not validate_mongodb_uri(mongodb_uri):
+    print("WARNING: MONGODB_URI format may be invalid. Expected mongodb:// or mongodb+srv://")
 
 # Constants
 MAX_DEPTH = 5
@@ -33,3 +55,6 @@ MEMORY_NODES_COLLECTION = "memory_nodes"
 CONVERSATIONS_VECTOR_SEARCH_INDEX_NAME = "conversations_vector_search_index"
 CONVERSATIONS_FULLTEXT_SEARCH_INDEX_NAME = "conversations_fulltext_search_index"
 MEMORY_NODES_VECTOR_SEARCH_INDEX_NAME = "memory_nodes_vector_search_index"
+
+# CORS Configuration
+CORS_ORIGINS = get_cors_origins()

@@ -14,6 +14,10 @@ import config
 def hybrid_search(query, vector_query, user_id, weight=0.5, top_n=10):
     """
     Perform a hybrid search operation on MongoDB by combining full-text and vector (semantic) search results.
+    
+    IMPORTANT: Uses RAW scores (not normalized) to maintain absolute relevance:
+    - Vector scores: 0.0-1.0 (cosine similarity)
+    - Full-text scores: Normalized to 0.0-1.0 range for comparison
     """
     pipeline = [
         {
@@ -24,12 +28,8 @@ def hybrid_search(query, vector_query, user_id, weight=0.5, top_n=10):
         },
         {"$match": {"user_id": user_id}},
         {"$addFields": {"fts_score": {"$meta": "searchScore"}}},
-        {"$setWindowFields": {"output": {"maxScore": {"$max": "$fts_score"}}}},
-        {
-            "$addFields": {
-                "normalized_fts_score": {"$divide": ["$fts_score", "$maxScore"]}
-            }
-        },
+        # Normalize full-text scores to 0-1 range (Atlas Search scores can be 0-15+)
+        {"$addFields": {"normalized_fts_score": {"$divide": ["$fts_score", 15]}}},
         {
             "$project": {
                 "text": 1,
@@ -53,26 +53,15 @@ def hybrid_search(query, vector_query, user_id, weight=0.5, top_n=10):
                             "filter": {"user_id": user_id},
                         }
                     },
+                    # Use RAW vector search scores (already 0-1 cosine similarity)
                     {"$addFields": {"vs_score": {"$meta": "vectorSearchScore"}}},
-                    {
-                        "$setWindowFields": {
-                            "output": {"maxScore": {"$max": "$vs_score"}}
-                        }
-                    },
-                    {
-                        "$addFields": {
-                            "normalized_vs_score": {
-                                "$divide": ["$vs_score", "$maxScore"]
-                            }
-                        }
-                    },
                     {
                         "$project": {
                             "text": 1,
                             "type": 1,
                             "timestamp": 1,
                             "conversation_id": 1,
-                            "normalized_vs_score": 1,
+                            "vs_score": 1,
                         }
                     },
                 ],
@@ -82,7 +71,7 @@ def hybrid_search(query, vector_query, user_id, weight=0.5, top_n=10):
             "$group": {
                 "_id": "$_id",  # Group by document ID
                 "fts_score": {"$max": "$normalized_fts_score"},
-                "vs_score": {"$max": "$normalized_vs_score"},
+                "vs_score": {"$max": "$vs_score"},
                 "text_field": {"$first": "$text"},
                 "type_field": {"$first": "$type"},
                 "timestamp_field": {"$first": "$timestamp"},
@@ -191,7 +180,7 @@ async def search_memory(user_id, query):
             
             # MongoDB Atlas Full-Text Search Pipeline
             # Uses the same search index but only the text component
-            MINIMUM_FULLTEXT_SCORE = 5.0  # Atlas Search scores are typically 0-15+ range
+            MINIMUM_FULLTEXT_SCORE = 3.0  # Atlas Search scores are typically 0-15+ range
             pipeline = [
                 {
                     "$search": {
@@ -265,9 +254,13 @@ async def search_memory(user_id, query):
         documents = hybrid_search(query, vector_query, user_id, weight=0.8, top_n=10)
         
         # ROBUST FILTERING: Filter results by minimum hybrid score threshold
-        # Threshold of 0.70 ensures high-quality, relevant results
-        # This prevents showing irrelevant results to users
-        MINIMUM_HYBRID_SCORE = 0.70
+        # With raw cosine similarity scores (0.0-1.0 range):
+        # - 0.75+: Highly relevant (but might miss some good results)
+        # - 0.50+: Reasonably relevant (good balance)
+        # - Below 0.50: Not relevant enough
+        # Using 0.55 (55%) as sweet spot - filters out clearly irrelevant results
+        # while keeping semantically related content
+        MINIMUM_HYBRID_SCORE = 0.55
         relevant_results = [doc for doc in documents if doc["score"] >= MINIMUM_HYBRID_SCORE]
         
         logger.info(f"Hybrid search: {len(documents)} total results, {len(relevant_results)} above threshold ({MINIMUM_HYBRID_SCORE})")
@@ -282,6 +275,7 @@ async def search_memory(user_id, query):
                     "relevant_results": 0,
                     "minimum_score": MINIMUM_HYBRID_SCORE,
                     "search_type": "hybrid_vector_fulltext",
+                    "score_explanation": "Scores based on cosine similarity (0.0-1.0). Threshold 0.55 filters irrelevant results.",
                     "note": "No results met the minimum relevance threshold"
                 }
             }
@@ -314,6 +308,7 @@ async def search_memory(user_id, query):
                 "search_type": "hybrid_vector_fulltext",
                 "weight_vector": 0.8,
                 "weight_fulltext": 0.2,
+                "score_explanation": "Scores based on cosine similarity (0.0-1.0). Threshold 0.55 filters irrelevant results.",
                 "note": "Results filtered by relevance threshold and ranked by hybrid score"
             }
         }

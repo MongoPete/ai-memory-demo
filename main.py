@@ -125,6 +125,44 @@ async def add_message(message: MessageInput):
         )
 
 
+@app.get("/search/")
+async def search_conversations(user_id: str, query: str):
+    """
+    Search for relevant conversations using hybrid search (vector + full-text).
+    
+    This endpoint is designed for the global search feature and returns ONLY
+    the relevant, filtered search results with detailed relevance scores.
+    
+    Key Features:
+    - Filters results by minimum relevance threshold (70% for hybrid, 75% for memories)
+    - Returns detailed scoring breakdown (hybrid, vector, full-text)
+    - Includes search metadata (total vs relevant results)
+    - Educational: Shows why results were selected
+    
+    Args:
+        user_id: User ID to search for
+        query: Search query text
+        
+    Returns:
+        Filtered search results with relevance scores and metadata
+    """
+    try:
+        # Use the enhanced search_memory function which includes filtering
+        search_results = await search_memory(user_id, query)
+        
+        # Return only the documents (filtered search results) with metadata
+        return search_results
+        
+    except HTTPException:
+        raise
+    except Exception as error:
+        error_response = error_utils.handle_exception(error)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(**error_response).dict(),
+        )
+
+
 @app.get("/retrieve_memory/")
 async def retrieve_memory(user_id: str, text: str):
     """

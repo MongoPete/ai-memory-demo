@@ -145,20 +145,26 @@ export function SplitScreenDemo() {
     setIsSearching(true);
 
     try {
-      // Search across all users
+      // Search across all users using the dedicated search endpoint
+      // This endpoint returns ONLY relevant, filtered results with scores
       const searchPromises = DEMO_USERS.map(async (user) => {
         const params = new URLSearchParams({
           user_id: user.id,
-          text: query
+          query: query
         });
-        const response = await fetch(`${config.retrieveMemoryEndpoint}?${params}`);
+        const response = await fetch(`${config.searchEndpoint}?${params}`);
         
         if (response.ok) {
           const data = await response.json();
-          if (data.related_conversation && Array.isArray(data.related_conversation)) {
-            return data.related_conversation.map((msg: Message) => ({
-              ...msg,
-              user_id: user.id // Ensure we know which user this is from
+          
+          // Check if we have valid documents (not "No documents found")
+          if (data.documents && Array.isArray(data.documents) && data.documents.length > 0) {
+            // Add user context and return filtered results with scores
+            return data.documents.map((doc: any) => ({
+              ...doc,
+              user_id: user.id, // Ensure we know which user this is from
+              relevance_scores: doc.relevance_scores, // Include relevance scores
+              search_metadata: data.search_metadata // Include search metadata
             }));
           }
         }
@@ -167,6 +173,14 @@ export function SplitScreenDemo() {
 
       const allResults = await Promise.all(searchPromises);
       const flatResults = allResults.flat();
+      
+      // Sort by relevance score (if available)
+      flatResults.sort((a: any, b: any) => {
+        const scoreA = a.relevance_scores?.hybrid_score || 0;
+        const scoreB = b.relevance_scores?.hybrid_score || 0;
+        return scoreB - scoreA;
+      });
+      
       setGlobalSearchResults(flatResults);
     } catch (error) {
       console.error('Error searching:', error);
@@ -326,10 +340,10 @@ export function SplitScreenDemo() {
           {globalSearchQuery && globalSearchResults.length > 0 && (
             <div className="space-y-2">
               <div className="text-sm font-medium text-gray-700">
-                Found {globalSearchResults.length} result(s) across all users
+                Found {globalSearchResults.length} relevant result(s) across all users
               </div>
               <div className="space-y-2 max-h-60 overflow-y-auto">
-                {globalSearchResults.map((result, idx) => (
+                {globalSearchResults.map((result: any, idx) => (
                   <div
                     key={idx}
                     className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm"
@@ -342,11 +356,26 @@ export function SplitScreenDemo() {
                           <Badge variant="outline" className="text-xs">
                             {result.conversation_id}
                           </Badge>
+                          {/* Show relevance score if available */}
+                          {result.relevance_scores?.hybrid_score && (
+                            <Badge variant="secondary" className="text-xs bg-green-100 text-green-800">
+                              {Math.round(result.relevance_scores.hybrid_score * 100)}% relevant
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-gray-900">{result.text}</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {formatTimestamp(result.timestamp)}
-                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-xs text-gray-500">
+                            {formatTimestamp(result.timestamp)}
+                          </p>
+                          {/* Show score breakdown on hover */}
+                          {result.relevance_scores && (
+                            <span className="text-xs text-gray-400" title={result.relevance_scores.explanation}>
+                              📊 Vector: {Math.round((result.relevance_scores.vector_similarity || 0) * 100)}% | 
+                              Text: {Math.round((result.relevance_scores.fulltext_score || 0) * 100)}%
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -357,18 +386,19 @@ export function SplitScreenDemo() {
 
           {globalSearchQuery && globalSearchResults.length === 0 && !isSearching && (
             <div className="text-sm text-gray-500 italic text-center py-4">
-              No results found across all conversations
+              No relevant results found (results below 70% relevance threshold were filtered)
             </div>
           )}
 
           {!globalSearchQuery && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm">
-              <p className="font-medium text-blue-900 mb-2">💡 Try these searches:</p>
+              <p className="font-medium text-blue-900 mb-2">💡 How it works:</p>
               <ul className="text-blue-800 space-y-1 text-xs">
-                <li>• Search for topics mentioned by any user</li>
-                <li>• Semantic search works across different wording</li>
-                <li>• Results show which user and conversation matched</li>
-                <li>• Demonstrates scalability: Works for 3 users or 3000 users</li>
+                <li>• <strong>Hybrid Search:</strong> Combines vector similarity + full-text search</li>
+                <li>• <strong>Smart Filtering:</strong> Only shows results ≥70% relevant</li>
+                <li>• <strong>Semantic Understanding:</strong> Finds related concepts, not just keywords</li>
+                <li>• <strong>Relevance Scores:</strong> See why each result was selected</li>
+                <li>• <strong>Multi-User:</strong> Searches across all users simultaneously</li>
               </ul>
             </div>
           )}

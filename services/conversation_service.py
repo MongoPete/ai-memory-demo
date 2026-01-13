@@ -191,6 +191,7 @@ async def search_memory(user_id, query):
             
             # MongoDB Atlas Full-Text Search Pipeline
             # Uses the same search index but only the text component
+            MINIMUM_FULLTEXT_SCORE = 5.0  # Atlas Search scores are typically 0-15+ range
             pipeline = [
                 {
                     "$search": {
@@ -203,8 +204,9 @@ async def search_memory(user_id, query):
                 },
                 {"$match": {"user_id": user_id}},  # Filter by user (normalized to lowercase)
                 {"$addFields": {"score": {"$meta": "searchScore"}}},  # Get search score
+                {"$match": {"score": {"$gte": MINIMUM_FULLTEXT_SCORE}}},  # Filter low-relevance results
                 {"$sort": {"score": -1}},  # Sort by relevance
-                {"$limit": 5},  # Top 5 results
+                {"$limit": 10},  # Top 10 results
                 {
                     "$project": {
                         "text": 1,
@@ -219,26 +221,102 @@ async def search_memory(user_id, query):
             
             results = list(conversations.aggregate(pipeline))
             
-            if not results:
-                return {"documents": "No documents found"}
+            logger.info(f"MongoDB Atlas full-text search returned {len(results)} results above threshold")
             
-            formatted_results = [serialize_document(doc) for doc in results]
-            logger.info(f"MongoDB Atlas full-text search returned {len(formatted_results)} results")
-            return {"documents": formatted_results}
+            if not results:
+                return {
+                    "documents": "No documents found",
+                    "search_metadata": {
+                        "query": query,
+                        "total_results": 0,
+                        "relevant_results": 0,
+                        "minimum_score": MINIMUM_FULLTEXT_SCORE,
+                        "search_type": "atlas_fulltext_only",
+                        "note": "Bedrock unavailable - using MongoDB Atlas full-text search only"
+                    }
+                }
+            
+            # Enrich results with score information
+            enriched_results = []
+            for doc in results:
+                enriched_doc = serialize_document(doc)
+                score = doc.get("score") or 0
+                enriched_doc["relevance_scores"] = {
+                    "fulltext_score": round(score, 4),
+                    "explanation": f"Text relevance: {round(score, 2)}/15.0 (higher is better)"
+                }
+                enriched_results.append(enriched_doc)
+            
+            return {
+                "documents": enriched_results,
+                "search_metadata": {
+                    "query": query,
+                    "total_results": len(results),
+                    "relevant_results": len(results),
+                    "minimum_score": MINIMUM_FULLTEXT_SCORE,
+                    "search_type": "atlas_fulltext_only",
+                    "note": "Using MongoDB Atlas Search without vector embeddings (Bedrock unavailable)"
+                }
+            }
         
         # PRIMARY PATH: Hybrid Search (Vector + Full-Text)
         # This is the main showcase - combining AWS Bedrock embeddings with MongoDB Atlas Search
         logger.info("DEMO MODE: Using hybrid search (AWS Bedrock vectors + MongoDB Atlas full-text)")
-        documents = hybrid_search(query, vector_query, user_id, weight=0.8, top_n=5)
+        documents = hybrid_search(query, vector_query, user_id, weight=0.8, top_n=10)
         
-        # Filter results by minimum hybrid score threshold
+        # ROBUST FILTERING: Filter results by minimum hybrid score threshold
         # Threshold of 0.70 ensures high-quality, relevant results
-        relevant_results = [doc for doc in documents if doc["score"] >= 0.70]
+        # This prevents showing irrelevant results to users
+        MINIMUM_HYBRID_SCORE = 0.70
+        relevant_results = [doc for doc in documents if doc["score"] >= MINIMUM_HYBRID_SCORE]
+        
+        logger.info(f"Hybrid search: {len(documents)} total results, {len(relevant_results)} above threshold ({MINIMUM_HYBRID_SCORE})")
         
         if not relevant_results:
-            return {"documents": "No documents found"}
-        else:
-            return {"documents": [serialize_document(doc) for doc in relevant_results]}
+            logger.info(f"No results above relevance threshold for query: '{query}'")
+            return {
+                "documents": "No documents found",
+                "search_metadata": {
+                    "query": query,
+                    "total_results": len(documents),
+                    "relevant_results": 0,
+                    "minimum_score": MINIMUM_HYBRID_SCORE,
+                    "search_type": "hybrid_vector_fulltext",
+                    "note": "No results met the minimum relevance threshold"
+                }
+            }
+        
+        # Enrich results with educational score breakdown
+        enriched_results = []
+        for doc in relevant_results:
+            enriched_doc = serialize_document(doc)
+            # Add detailed score breakdown for demo/educational purposes
+            # Use 'or 0' to handle None values from MongoDB
+            vs_score = doc.get("vs_score") or 0
+            fts_score = doc.get("fts_score") or 0
+            hybrid_score = doc.get("score") or 0
+            
+            enriched_doc["relevance_scores"] = {
+                "hybrid_score": round(hybrid_score, 4),
+                "vector_similarity": round(vs_score, 4),
+                "fulltext_score": round(fts_score, 4),
+                "explanation": f"Hybrid: {round(hybrid_score*100, 1)}% relevant (Vector: {round(vs_score*100, 1)}%, Text: {round(fts_score*100, 1)}%)"
+            }
+            enriched_results.append(enriched_doc)
+        
+        return {
+            "documents": enriched_results,
+            "search_metadata": {
+                "query": query,
+                "total_results": len(documents),
+                "relevant_results": len(relevant_results),
+                "minimum_score": MINIMUM_HYBRID_SCORE,
+                "search_type": "hybrid_vector_fulltext",
+                "weight_vector": 0.8,
+                "weight_fulltext": 0.2,
+                "note": "Results filtered by relevance threshold and ranked by hybrid score"
+            }
+        }
             
     except Exception as error:
         logger.error(f"Search failed: {str(error)}")

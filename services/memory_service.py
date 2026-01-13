@@ -21,6 +21,9 @@ async def list_all_memories(user_id: str) -> List[Dict]:
         List of memory nodes with all fields including effective_importance
     """
     try:
+        # Normalize user_id to lowercase for case-insensitive search
+        user_id = user_id.lower()
+        
         cursor = memory_nodes.find({"user_id": user_id}).sort(
             [("importance", pymongo.DESCENDING), ("timestamp", pymongo.DESCENDING)]
         )
@@ -75,7 +78,7 @@ async def list_all_memories(user_id: str) -> List[Dict]:
 
 
 async def find_similar_memories(
-    user_id: str, embedding: List[float], top_n: int = 3
+    user_id: str, embedding: List[float], top_n: int = 3, minimum_similarity: float = 0.75
 ) -> List[Dict]:
     """
     Find most similar memory nodes from the memory tree using vector search. Returns memories ranked by 
@@ -85,14 +88,21 @@ async def find_similar_memories(
     on access frequency, creating a memory retrieval system that adapts to both content quality and user 
     interaction patterns.
     
+    ROBUSTNESS: Only returns memories above minimum_similarity threshold (default 0.75) to ensure
+    relevance and prevent showing unrelated memories to users.
+    
     Args:
         user_id: User ID to filter by
         embedding: Query embedding vector
-        top_n: Number of similar memories to return
+        top_n: Number of similar memories to return (before filtering)
+        minimum_similarity: Minimum vector similarity score (0.0-1.0, default 0.75)
     Returns:
-        List of similar memory nodes with similarity scores
+        List of similar memory nodes with similarity scores, filtered by relevance
     """
     try:
+        # Normalize user_id to lowercase for case-insensitive search
+        user_id = user_id.lower()
+        
         response = memory_nodes.aggregate(
             [
                 {
@@ -101,7 +111,7 @@ async def find_similar_memories(
                         "path": "embeddings",
                         "queryVector": embedding,
                         "numCandidates": 100,
-                        "limit": top_n,
+                        "limit": top_n * 2,  # Get more candidates for filtering
                         "filter": {"user_id": user_id},
                     }
                 },
@@ -128,10 +138,35 @@ async def find_similar_memories(
         )
 
         results = []
+        total_results = 0
         for doc in response:
-            doc_id = str(doc.pop("_id"))
-            doc["id"] = doc_id
-            results.append(doc)
+            total_results += 1
+            # ROBUST FILTERING: Only include memories above similarity threshold
+            similarity_score = doc.get("similarity") or 0
+            if similarity_score >= minimum_similarity:
+                doc_id = str(doc.pop("_id"))
+                doc["id"] = doc_id
+                # Add educational score breakdown
+                importance = doc.get("importance") or 0
+                effective_importance = doc.get("effective_importance") or 0
+                access_count = doc.get("access_count") or 0
+                
+                doc["relevance_breakdown"] = {
+                    "similarity_score": round(similarity_score, 4),
+                    "importance_score": round(importance, 4),
+                    "effective_importance": round(effective_importance, 4),
+                    "access_count": access_count,
+                    "explanation": f"Vector similarity: {round(similarity_score*100, 1)}%, Importance: {round(importance*100, 1)}%, Access count: {access_count}"
+                }
+                results.append(doc)
+        
+        # Sort by effective importance (similarity * importance * access pattern)
+        results.sort(key=lambda x: (x.get("effective_importance") or 0) * (x.get("similarity") or 0), reverse=True)
+        
+        # Limit to top_n after filtering
+        results = results[:top_n]
+        
+        logger.info(f"Memory search: {total_results} candidates, {len(results)} above threshold ({minimum_similarity})")
 
         return results
     except Exception as e:
@@ -179,6 +214,9 @@ async def prune_memories(user_id):
 async def remember_content(request):
     """Store a new memory for the user, integrating with existing memories"""
     try:
+        # Normalize user_id to lowercase for case-insensitive search
+        request.user_id = request.user_id.lower()
+        
         # Input validation
         if not request.content.strip():
             return {"message": "Cannot remember empty content"}

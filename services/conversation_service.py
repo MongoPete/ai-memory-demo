@@ -14,6 +14,10 @@ import config
 def hybrid_search(query, vector_query, user_id, weight=0.5, top_n=10):
     """
     Perform a hybrid search operation on MongoDB by combining full-text and vector (semantic) search results.
+    
+    IMPORTANT: Uses RAW scores (not normalized) to maintain absolute relevance:
+    - Vector scores: 0.0-1.0 (cosine similarity)
+    - Full-text scores: Normalized to 0.0-1.0 range for comparison
     """
     pipeline = [
         {
@@ -24,12 +28,8 @@ def hybrid_search(query, vector_query, user_id, weight=0.5, top_n=10):
         },
         {"$match": {"user_id": user_id}},
         {"$addFields": {"fts_score": {"$meta": "searchScore"}}},
-        {"$setWindowFields": {"output": {"maxScore": {"$max": "$fts_score"}}}},
-        {
-            "$addFields": {
-                "normalized_fts_score": {"$divide": ["$fts_score", "$maxScore"]}
-            }
-        },
+        # Normalize full-text scores to 0-1 range (Atlas Search scores can be 0-15+)
+        {"$addFields": {"normalized_fts_score": {"$divide": ["$fts_score", 15]}}},
         {
             "$project": {
                 "text": 1,
@@ -53,26 +53,15 @@ def hybrid_search(query, vector_query, user_id, weight=0.5, top_n=10):
                             "filter": {"user_id": user_id},
                         }
                     },
+                    # Use RAW vector search scores (already 0-1 cosine similarity)
                     {"$addFields": {"vs_score": {"$meta": "vectorSearchScore"}}},
-                    {
-                        "$setWindowFields": {
-                            "output": {"maxScore": {"$max": "$vs_score"}}
-                        }
-                    },
-                    {
-                        "$addFields": {
-                            "normalized_vs_score": {
-                                "$divide": ["$vs_score", "$maxScore"]
-                            }
-                        }
-                    },
                     {
                         "$project": {
                             "text": 1,
                             "type": 1,
                             "timestamp": 1,
                             "conversation_id": 1,
-                            "normalized_vs_score": 1,
+                            "vs_score": 1,
                         }
                     },
                 ],
@@ -82,7 +71,7 @@ def hybrid_search(query, vector_query, user_id, weight=0.5, top_n=10):
             "$group": {
                 "_id": "$_id",  # Group by document ID
                 "fts_score": {"$max": "$normalized_fts_score"},
-                "vs_score": {"$max": "$normalized_vs_score"},
+                "vs_score": {"$max": "$vs_score"},
                 "text_field": {"$first": "$text"},
                 "type_field": {"$first": "$type"},
                 "timestamp_field": {"$first": "$timestamp"},
@@ -125,6 +114,9 @@ def hybrid_search(query, vector_query, user_id, weight=0.5, top_n=10):
 async def add_conversation_message(message_input):
     """Add a message to the conversation history"""
     try:
+        # Normalize user_id to lowercase for case-insensitive search
+        message_input.user_id = message_input.user_id.lower()
+        
         new_message = Message(message_input)
         conversations.insert_one(new_message.to_dict())
         # For significant human messages, create a memory node
@@ -150,19 +142,28 @@ async def add_conversation_message(message_input):
 
 async def search_memory(user_id, query):
     """
-    Searches memory items by user_id and a textual query using hybrid search.
-    Falls back to text-only search if embeddings are unavailable.
+    Searches memory items using MongoDB Atlas hybrid search (vector + full-text).
+    
+    DEMO SHOWCASE:
+    - Primary: Hybrid Search (AWS Bedrock embeddings + MongoDB Atlas full-text)
+    - Fallback: MongoDB Atlas full-text search only (if Bedrock unavailable)
+    
+    This demonstrates MongoDB's powerful search capabilities both with and without vector embeddings.
     """
     try:
-        # Generate embedding for the query text
+        # Normalize user_id to lowercase for case-insensitive matching
+        user_id = user_id.lower()
+        
+        # Generate embedding for the query text using AWS Bedrock
         vector_query = generate_embedding(query)
         
-        # If embeddings unavailable (empty list), use text-only search
+        # FALLBACK PATH: MongoDB Atlas Full-Text Search Only
+        # If embeddings unavailable (Bedrock down), leverage MongoDB's full-text search
         if not vector_query:
-            logger.warning(f"FALLBACK SEARCH: Embeddings unavailable for user={user_id}, query='{query[:50]}...'")
-            logger.info("Using text-only regex search (Bedrock unavailable)")
+            logger.warning(f"Bedrock unavailable - using MongoDB Atlas full-text search only")
+            logger.info(f"DEMO MODE: Showcasing MongoDB Atlas Search without vector embeddings")
             
-            # Audit log: Track fallback search usage
+            # Audit log: Track search type for analytics
             try:
                 from database.mongodb import db
                 audit_collection = db.get_collection("search_audit")
@@ -170,40 +171,150 @@ async def search_memory(user_id, query):
                     "timestamp": datetime.datetime.now(datetime.timezone.utc),
                     "user_id": user_id,
                     "query": query,
-                    "search_type": "fallback_regex",
-                    "reason": "embeddings_unavailable",
-                    "bedrock_status": "unavailable"
+                    "search_type": "atlas_fulltext_only",
+                    "reason": "bedrock_embeddings_unavailable",
+                    "note": "Using MongoDB Atlas Search index without vector component"
                 })
             except Exception as audit_error:
                 logger.debug(f"Audit logging failed (non-critical): {audit_error}")
             
-            # Simple text search fallback - KEEP _id for serialization
-            results = list(conversations.find(
+            # MongoDB Atlas Full-Text Search Pipeline
+            # Uses the same search index but only the text component
+            MINIMUM_FULLTEXT_SCORE = 3.0  # Atlas Search scores are typically 0-15+ range
+            pipeline = [
                 {
-                    "user_id": user_id,
-                    "text": {"$regex": query, "$options": "i"}
+                    "$search": {
+                        "index": config.CONVERSATIONS_FULLTEXT_SEARCH_INDEX_NAME,
+                        "text": {
+                            "query": query,
+                            "path": "text"
+                        }
+                    }
                 },
-                projection={"embeddings": 0}  # Exclude only embeddings, keep _id
-            ).limit(5))
+                {"$match": {"user_id": user_id}},  # Filter by user (normalized to lowercase)
+                {"$addFields": {"score": {"$meta": "searchScore"}}},  # Get search score
+                {"$match": {"score": {"$gte": MINIMUM_FULLTEXT_SCORE}}},  # Filter low-relevance results
+                {"$sort": {"score": -1}},  # Sort by relevance
+                {"$limit": 10},  # Top 10 results
+                {
+                    "$project": {
+                        "text": 1,
+                        "type": 1,
+                        "timestamp": 1,
+                        "conversation_id": 1,
+                        "score": 1,
+                        "embeddings": 0  # Exclude embeddings from response
+                    }
+                }
+            ]
+            
+            results = list(conversations.aggregate(pipeline))
+            
+            logger.info(f"MongoDB Atlas full-text search returned {len(results)} results above threshold")
             
             if not results:
-                return {"documents": "No documents found"}
-            else:
-                # Format results - serialize_document needs _id
-                formatted_results = [serialize_document(doc) for doc in results]
-                logger.info(f"Fallback search returned {len(formatted_results)} results")
-                return {"documents": formatted_results}
+                return {
+                    "documents": "No documents found",
+                    "search_metadata": {
+                        "query": query,
+                        "total_results": 0,
+                        "relevant_results": 0,
+                        "minimum_score": MINIMUM_FULLTEXT_SCORE,
+                        "search_type": "atlas_fulltext_only",
+                        "note": "Bedrock unavailable - using MongoDB Atlas full-text search only"
+                    }
+                }
+            
+            # Enrich results with score information
+            enriched_results = []
+            for doc in results:
+                enriched_doc = serialize_document(doc)
+                score = doc.get("score") or 0
+                enriched_doc["relevance_scores"] = {
+                    "fulltext_score": round(score, 4),
+                    "explanation": f"Text relevance: {round(score, 2)}/15.0 (higher is better)"
+                }
+                enriched_results.append(enriched_doc)
+            
+            return {
+                "documents": enriched_results,
+                "search_metadata": {
+                    "query": query,
+                    "total_results": len(results),
+                    "relevant_results": len(results),
+                    "minimum_score": MINIMUM_FULLTEXT_SCORE,
+                    "search_type": "atlas_fulltext_only",
+                    "note": "Using MongoDB Atlas Search without vector embeddings (Bedrock unavailable)"
+                }
+            }
         
-        # Perform hybrid search over the stored messages
-        documents = hybrid_search(query, vector_query, user_id, weight=0.8, top_n=5)
-        # Filter results by minimum hybrid score threshold
-        relevant_results = [doc for doc in documents if doc["score"] >= 0.70]
+        # PRIMARY PATH: Hybrid Search (Vector + Full-Text)
+        # This is the main showcase - combining AWS Bedrock embeddings with MongoDB Atlas Search
+        logger.info("DEMO MODE: Using hybrid search (AWS Bedrock vectors + MongoDB Atlas full-text)")
+        documents = hybrid_search(query, vector_query, user_id, weight=0.8, top_n=10)
+        
+        # ROBUST FILTERING: Filter results by minimum hybrid score threshold
+        # With raw cosine similarity scores (0.0-1.0 range):
+        # - 0.75+: Highly relevant (but might miss some good results)
+        # - 0.50+: Reasonably relevant (good balance)
+        # - Below 0.50: Not relevant enough
+        # Using 0.55 (55%) as sweet spot - filters out clearly irrelevant results
+        # while keeping semantically related content
+        MINIMUM_HYBRID_SCORE = 0.55
+        relevant_results = [doc for doc in documents if doc["score"] >= MINIMUM_HYBRID_SCORE]
+        
+        logger.info(f"Hybrid search: {len(documents)} total results, {len(relevant_results)} above threshold ({MINIMUM_HYBRID_SCORE})")
+        
         if not relevant_results:
-            return {"documents": "No documents found"}
-        else:
-            return {"documents": [serialize_document(doc) for doc in relevant_results]}
+            logger.info(f"No results above relevance threshold for query: '{query}'")
+            return {
+                "documents": "No documents found",
+                "search_metadata": {
+                    "query": query,
+                    "total_results": len(documents),
+                    "relevant_results": 0,
+                    "minimum_score": MINIMUM_HYBRID_SCORE,
+                    "search_type": "hybrid_vector_fulltext",
+                    "score_explanation": "Scores based on cosine similarity (0.0-1.0). Threshold 0.55 filters irrelevant results.",
+                    "note": "No results met the minimum relevance threshold"
+                }
+            }
+        
+        # Enrich results with educational score breakdown
+        enriched_results = []
+        for doc in relevant_results:
+            enriched_doc = serialize_document(doc)
+            # Add detailed score breakdown for demo/educational purposes
+            # Use 'or 0' to handle None values from MongoDB
+            vs_score = doc.get("vs_score") or 0
+            fts_score = doc.get("fts_score") or 0
+            hybrid_score = doc.get("score") or 0
+            
+            enriched_doc["relevance_scores"] = {
+                "hybrid_score": round(hybrid_score, 4),
+                "vector_similarity": round(vs_score, 4),
+                "fulltext_score": round(fts_score, 4),
+                "explanation": f"Hybrid: {round(hybrid_score*100, 1)}% relevant (Vector: {round(vs_score*100, 1)}%, Text: {round(fts_score*100, 1)}%)"
+            }
+            enriched_results.append(enriched_doc)
+        
+        return {
+            "documents": enriched_results,
+            "search_metadata": {
+                "query": query,
+                "total_results": len(documents),
+                "relevant_results": len(relevant_results),
+                "minimum_score": MINIMUM_HYBRID_SCORE,
+                "search_type": "hybrid_vector_fulltext",
+                "weight_vector": 0.8,
+                "weight_fulltext": 0.2,
+                "score_explanation": "Scores based on cosine similarity (0.0-1.0). Threshold 0.55 filters irrelevant results.",
+                "note": "Results filtered by relevance threshold and ranked by hybrid score"
+            }
+        }
+            
     except Exception as error:
-        logger.error(str(error))
+        logger.error(f"Search failed: {str(error)}")
         raise
 
 async def get_conversation_context(_id):
@@ -314,6 +425,9 @@ async def get_conversation_history(user_id: str, conversation_id: str):
     Returns a list of messages in chronological order.
     """
     try:
+        # Normalize user_id to lowercase for case-insensitive search
+        user_id = user_id.lower()
+        
         cursor = conversations.find(
             {
                 "user_id": user_id,

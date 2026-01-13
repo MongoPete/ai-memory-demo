@@ -17,5 +17,6 @@ export const config = {
   healthCheckEndpoint: `${API_BASE_URL}/health`,
   conversationEndpoint: `${API_BASE_URL}/conversation/`,
   retrieveMemoryEndpoint: `${API_BASE_URL}/retrieve_memory/`,
+  searchEndpoint: `${API_BASE_URL}/search/`,
   memoriesEndpoint: (userId: string) => `${API_BASE_URL}/memories/${userId}`,
 };

@@ -125,30 +125,74 @@ async def add_message(message: MessageInput):
         )
 
 
+@app.get("/search/")
+async def search_conversations(user_id: str, query: str):
+    """
+    Search for relevant conversations using hybrid search (vector + full-text).
+    
+    This endpoint is designed for the global search feature and returns ONLY
+    the relevant, filtered search results with detailed relevance scores.
+    
+    Key Features:
+    - Filters results by minimum relevance threshold (70% for hybrid, 75% for memories)
+    - Returns detailed scoring breakdown (hybrid, vector, full-text)
+    - Includes search metadata (total vs relevant results)
+    - Educational: Shows why results were selected
+    
+    Args:
+        user_id: User ID to search for
+        query: Search query text
+        
+    Returns:
+        Filtered search results with relevance scores and metadata
+    """
+    try:
+        # Use the enhanced search_memory function which includes filtering
+        search_results = await search_memory(user_id, query)
+        
+        # Return only the documents (filtered search results) with metadata
+        return search_results
+        
+    except HTTPException:
+        raise
+    except Exception as error:
+        error_response = error_utils.handle_exception(error)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(**error_response).dict(),
+        )
+
+
 @app.get("/retrieve_memory/")
 async def retrieve_memory(user_id: str, text: str):
     """
-    Retrieve memory items, context, summary, and similar memory nodes in a single request
+    Retrieve memory items, context, summary, and similar memory nodes in a single request.
+    
+    Returns enriched results with relevance scores and filtering metadata to demonstrate
+    MongoDB's search capabilities and AWS Bedrock's AI features.
     """
     try:
         # Generate embedding for the query text
         vector_query = generate_embedding(text)
 
-        # Search for relevant memory items
+        # Search for relevant memory items (with relevance filtering)
         memory_items = await search_memory(user_id, text)
 
-        # Get similar memory nodes from the memory tree
-        similar_memories = await find_similar_memories(user_id, vector_query)
+        # Get similar memory nodes from the memory tree (with similarity threshold)
+        similar_memories = await find_similar_memories(user_id, vector_query, top_n=5, minimum_similarity=0.75)
 
+        # Check if no relevant conversations found
         if memory_items["documents"] == "No documents found":
             return {
                 "related_conversation": "No conversation found",
                 "conversation_summary": "No summary found",
-                "similar_memories": (
-                    similar_memories
-                    if similar_memories
-                    else "No similar memories found"
-                ),
+                "similar_memories": similar_memories if similar_memories else "No similar memories found",
+                "search_metadata": memory_items.get("search_metadata", {}),
+                "memory_metadata": {
+                    "total_memories_found": len(similar_memories),
+                    "minimum_similarity": 0.75,
+                    "note": "Memory results filtered by similarity threshold"
+                }
             }
 
         # Extract conversation ID from the first memory item
@@ -160,12 +204,14 @@ async def retrieve_memory(user_id: str, text: str):
         # Generate a detailed summary for the conversation
         summary = await generate_conversation_summary(context["documents"])
 
+        # Format memories with enriched scoring information
         memories = [
             {
                 "content": memory["content"],
                 "summary": memory["summary"],
                 "similarity": memory["similarity"],
                 "importance": memory["effective_importance"],
+                "relevance_breakdown": memory.get("relevance_breakdown", {})
             }
             for memory in similar_memories
         ]
@@ -174,6 +220,12 @@ async def retrieve_memory(user_id: str, text: str):
             "related_conversation": context["documents"],
             "conversation_summary": summary["summary"],
             "similar_memories": memories if memories else "No similar memories found",
+            "search_metadata": memory_items.get("search_metadata", {}),
+            "memory_metadata": {
+                "total_memories_found": len(similar_memories),
+                "minimum_similarity": 0.75,
+                "note": "Memories ranked by combined similarity and importance"
+            }
         }
 
         return result

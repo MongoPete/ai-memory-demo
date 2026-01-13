@@ -221,16 +221,16 @@ export function SplitScreenDemo() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="max-w-7xl mx-auto space-y-4 px-2 sm:px-4">
       {/* Header */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
+        <CardHeader className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Users className="size-6 text-blue-600" />
-              <CardTitle>Multi-User Demo Mode</CardTitle>
+              <Users className="size-5 sm:size-6 text-blue-600" />
+              <CardTitle className="text-base sm:text-lg">Multi-User Demo Mode</CardTitle>
             </div>
-            <Badge variant="outline" className="text-sm">
+            <Badge variant="outline" className="text-xs sm:text-sm">
               <Sparkles className="size-3 mr-1" />
               Real-time Vector Search
             </Badge>
@@ -238,25 +238,25 @@ export function SplitScreenDemo() {
         </CardHeader>
       </Card>
 
-      {/* Three User Chats Side by Side */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* Three User Chats - Responsive Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {DEMO_USERS.map((user) => (
-          <Card key={user.id} className="flex flex-col h-[500px]">
-            <CardHeader className="pb-3 border-b">
+          <Card key={user.id} className="flex flex-col h-[450px] sm:h-[500px]">
+            <CardHeader className="pb-3 border-b px-3 sm:px-4 py-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <div className={`size-3 rounded-full ${user.color}`} />
-                  <h3 className="font-semibold">{user.name}</h3>
+                  <div className={`size-2.5 sm:size-3 rounded-full ${user.color}`} />
+                  <h3 className="font-semibold text-sm sm:text-base">{user.name}</h3>
                   {processingUser === user.id && (
                     <Loader2 className="size-3 animate-spin text-blue-500" />
                   )}
                 </div>
-                <p className="text-xs text-gray-500">{user.conversationId}</p>
+                <p className="text-[10px] sm:text-xs text-gray-500">{user.conversationId}</p>
               </div>
             </CardHeader>
             
             {/* Messages */}
-            <CardContent className="flex-1 overflow-y-auto p-3 space-y-2">
+            <CardContent className="flex-1 overflow-y-auto p-2 sm:p-3 space-y-2">
               {messages[user.id]?.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-gray-400 text-xs">
                   No messages yet
@@ -275,8 +275,8 @@ export function SplitScreenDemo() {
                             : 'bg-gray-100 text-gray-900'
                         }`}
                       >
-                        <div>{msg.text}</div>
-                        <div className={`text-[10px] mt-1 ${msg.type === 'human' ? 'text-white/70' : 'text-gray-500'}`}>
+                        <div className="break-words">{msg.text}</div>
+                        <div className={`text-[9px] sm:text-[10px] mt-1 ${msg.type === 'human' ? 'text-white/70' : 'text-gray-500'}`}>
                           {formatTimestamp(msg.timestamp)}
                         </div>
                       </div>
@@ -288,14 +288,14 @@ export function SplitScreenDemo() {
             </CardContent>
 
             {/* Input */}
-            <div className="border-t p-3">
+            <div className="border-t p-2 sm:p-3">
               <div className="flex gap-2">
                 <Textarea
                   value={inputText[user.id]}
                   onChange={(e) => setInputText(prev => ({ ...prev, [user.id]: e.target.value }))}
                   placeholder="Type message..."
                   rows={2}
-                  className="flex-1 resize-none text-sm"
+                  className="flex-1 resize-none text-xs sm:text-sm"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -307,6 +307,7 @@ export function SplitScreenDemo() {
                   size="sm" 
                   onClick={() => handleSendMessage(user.id)}
                   disabled={processingUser === user.id}
+                  className="shrink-0 h-auto"
                 >
                   <Send className="size-3" />
                 </Button>
@@ -318,59 +319,59 @@ export function SplitScreenDemo() {
 
       {/* Global Search */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">🔍 Global Search</CardTitle>
-          <p className="text-sm text-gray-500">Search across all users and conversations simultaneously</p>
+        <CardHeader className="pb-3 p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">🔍 Global Search</CardTitle>
+          <p className="text-xs sm:text-sm text-gray-500">Search across all users and conversations simultaneously</p>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 p-4 sm:p-6">
           <div className="relative">
-            <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-gray-400" />
+            <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 size-3 sm:size-4 text-gray-400" />
             <Input
               value={globalSearchQuery}
               onChange={(e) => setGlobalSearchQuery(e.target.value)}
-              placeholder="Search across Alice, Bob, and Carol's conversations... (try semantic search!)"
-              className="pl-10"
+              placeholder="Search across Alice, Bob, and Carol's conversations..."
+              className="pl-9 sm:pl-10 text-sm"
             />
             {isSearching && (
-              <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 size-4 animate-spin text-gray-400" />
+              <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 size-3 sm:size-4 animate-spin text-gray-400" />
             )}
           </div>
 
           {/* Global Search Results */}
           {globalSearchQuery && globalSearchResults.length > 0 && (
             <div className="space-y-2">
-              <div className="text-sm font-medium text-gray-700">
+              <div className="text-xs sm:text-sm font-medium text-gray-700">
                 Found {globalSearchResults.length} relevant result(s) across all users
               </div>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
+              <div className="space-y-2 max-h-60 sm:max-h-80 overflow-y-auto">
                 {globalSearchResults.map((result: any, idx) => (
                   <div
                     key={idx}
-                    className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm"
+                    className="p-2 sm:p-3 bg-yellow-50 border border-yellow-200 rounded text-sm"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className={`size-2 rounded-full ${getUserColor(result.user_id)}`} />
-                          <span className="font-medium text-xs">{getUserName(result.user_id)}</span>
-                          <Badge variant="outline" className="text-xs">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1 sm:gap-2 mb-1">
+                          <div className={`size-2 rounded-full ${getUserColor(result.user_id)} shrink-0`} />
+                          <span className="font-medium text-[10px] sm:text-xs">{getUserName(result.user_id)}</span>
+                          <Badge variant="outline" className="text-[10px] sm:text-xs">
                             {result.conversation_id}
                           </Badge>
                           {/* Show relevance score if available */}
                           {result.relevance_scores?.hybrid_score && (
-                            <Badge variant="secondary" className="text-xs bg-green-100 text-green-800">
+                            <Badge variant="secondary" className="text-[10px] sm:text-xs bg-green-100 text-green-800">
                               {Math.round(result.relevance_scores.hybrid_score * 100)}% relevant
                             </Badge>
                           )}
                         </div>
-                        <p className="text-gray-900">{result.text}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <p className="text-xs text-gray-500">
+                        <p className="text-xs sm:text-sm text-gray-900 break-words">{result.text}</p>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mt-1">
+                          <p className="text-[10px] sm:text-xs text-gray-500">
                             {formatTimestamp(result.timestamp)}
                           </p>
-                          {/* Show score breakdown on hover */}
+                          {/* Show score breakdown */}
                           {result.relevance_scores && (
-                            <span className="text-xs text-gray-400" title={result.relevance_scores.explanation}>
+                            <span className="text-[9px] sm:text-xs text-gray-400" title={result.relevance_scores.explanation}>
                               📊 Vector: {Math.round((result.relevance_scores.vector_similarity || 0) * 100)}% | 
                               Text: {Math.round((result.relevance_scores.fulltext_score || 0) * 100)}%
                             </span>

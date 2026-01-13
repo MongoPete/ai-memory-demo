@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "buildCommand": "cd figmaUI && npm run build",
+  "outputDirectory": "figmaUI/dist",
+  "installCommand": "cd figmaUI && npm install",
+  "framework": "vite",
+  "routes": [
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}

@@ -21,6 +21,9 @@ async def list_all_memories(user_id: str) -> List[Dict]:
         List of memory nodes with all fields including effective_importance
     """
     try:
+        # Normalize user_id to lowercase for case-insensitive search
+        user_id = user_id.lower()
+        
         cursor = memory_nodes.find({"user_id": user_id}).sort(
             [("importance", pymongo.DESCENDING), ("timestamp", pymongo.DESCENDING)]
         )
@@ -93,6 +96,9 @@ async def find_similar_memories(
         List of similar memory nodes with similarity scores
     """
     try:
+        # Normalize user_id to lowercase for case-insensitive search
+        user_id = user_id.lower()
+        
         response = memory_nodes.aggregate(
             [
                 {
@@ -179,6 +185,9 @@ async def prune_memories(user_id):
 async def remember_content(request):
     """Store a new memory for the user, integrating with existing memories"""
     try:
+        # Normalize user_id to lowercase for case-insensitive search
+        request.user_id = request.user_id.lower()
+        
         # Input validation
         if not request.content.strip():
             return {"message": "Cannot remember empty content"}

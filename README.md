@@ -57,6 +57,64 @@ cp .env.example .env
 
 ---
 
+## 🎓 Workshop & Advanced Features
+
+### 📚 Workshop Materials (Educational Branch)
+
+**Branch:** `workshop-phase1-materials`
+
+A comprehensive hands-on workshop teaching MongoDB best practices for AI applications:
+- **6 progressive exercises** (4-6 hours total)
+- Test-driven development approach
+- Clear problem statements & solutions
+- Instructor guide included
+
+**Topics Covered:**
+1. Data Validation & Error Handling
+2. Index Health Monitoring
+3. Pagination for Scale
+4. Rate Limiting with MongoDB
+5. Embedding Dimension Validation
+6. Async Background Tasks
+
+```bash
+git checkout workshop-phase1-materials
+cd _Workshop
+# See README.md for instructions
+```
+
+[**→ View Workshop Materials**](../../tree/workshop-phase1-materials/_Workshop)
+
+---
+
+### 🚀 Complete Demo (Production-Ready Branch)
+
+**Branch:** `phase1-complete`
+
+Fully integrated Phase 1 improvements with admin dashboard for demonstrations:
+- ✅ **All validations** integrated
+- ✅ **Pagination** on all endpoints
+- ✅ **Rate limiting** enabled
+- ✅ **Index monitoring** built-in
+- ✅ **Admin Dashboard** for real-time monitoring
+
+**Admin Dashboard Features:**
+- System health overview
+- Rate limiting visualization
+- Search analytics & metrics
+- Background task monitoring
+- Index health indicators
+
+```bash
+git checkout phase1-complete
+# Production-ready demo with monitoring
+```
+
+[**→ View Complete Demo**](../../tree/phase1-complete)  
+[**→ Phase 1 Documentation**](docs/09-PHASE1-FEATURES.md)
+
+---
+
 ## 🏗 Architecture
 
 ```

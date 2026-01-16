@@ -7,7 +7,7 @@ MongoDB Atlas Vector Search + AWS Bedrock Demo
 [![Python](https://img.shields.io/badge/Python-3.10+-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-teal)](https://fastapi.tiangolo.com/)
 
-A production-ready demonstration of semantic search and AI memory management using MongoDB's vector search capabilities with AWS Bedrock AI services.
+A demo of semantic search and AI memory management using MongoDB's vector search capabilities with AWS Bedrock AI services.
 
 ---
 
